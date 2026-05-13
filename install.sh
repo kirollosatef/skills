@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh - install one or more skills from kirollosatef/claude-skills
+# install.sh - install one or more skills from kirollosatef/skills
 # Usage:
 #   curl -sL https://raw.githubusercontent.com/kirollosatef/skills/main/install.sh | bash -s -- <skill-name> [skill-name...]
 #   curl -sL https://raw.githubusercontent.com/kirollosatef/skills/main/install.sh | bash -s -- --all
