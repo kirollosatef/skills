@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # install.sh - install one or more skills from kirollosatef/claude-skills
 # Usage:
-#   curl -sL https://raw.githubusercontent.com/kirollosatef/claude-skills/main/install.sh | bash -s -- <skill-name> [skill-name...]
-#   curl -sL https://raw.githubusercontent.com/kirollosatef/claude-skills/main/install.sh | bash -s -- --all
-#   curl -sL https://raw.githubusercontent.com/kirollosatef/claude-skills/main/install.sh | bash -s -- --list
+#   curl -sL https://raw.githubusercontent.com/kirollosatef/skills/main/install.sh | bash -s -- <skill-name> [skill-name...]
+#   curl -sL https://raw.githubusercontent.com/kirollosatef/skills/main/install.sh | bash -s -- --all
+#   curl -sL https://raw.githubusercontent.com/kirollosatef/skills/main/install.sh | bash -s -- --list
 #
 # Skills install to ~/.claude/skills/<name>/ as a clone of this repo's skills/<name>/.
 
 set -euo pipefail
 
-REPO="kirollosatef/claude-skills"
+REPO="kirollosatef/skills"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
 TARBALL="https://github.com/${REPO}/archive/refs/heads/main.tar.gz"
 SKILLS_DIR="${HOME}/.claude/skills"

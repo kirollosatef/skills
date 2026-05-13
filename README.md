@@ -1,6 +1,8 @@
-# claude-skills
+# skills
 
 Personal collection of Claude Code skills by [@kirollosatef](https://github.com/kirollosatef). Drop-in capabilities your Claude agent can invoke automatically.
+
+Repo: [github.com/kirollosatef/skills](https://github.com/kirollosatef/skills)
 
 ## Install
 
@@ -9,25 +11,25 @@ Personal collection of Claude Code skills by [@kirollosatef](https://github.com/
 Install a single skill:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/kirollosatef/claude-skills/main/install.sh | bash -s -- share-markdown
+curl -sL https://raw.githubusercontent.com/kirollosatef/skills/main/install.sh | bash -s -- share-markdown
 ```
 
 Install multiple at once:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/kirollosatef/claude-skills/main/install.sh | bash -s -- share-markdown other-skill
+curl -sL https://raw.githubusercontent.com/kirollosatef/skills/main/install.sh | bash -s -- share-markdown other-skill
 ```
 
 Install everything:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/kirollosatef/claude-skills/main/install.sh | bash -s -- --all
+curl -sL https://raw.githubusercontent.com/kirollosatef/skills/main/install.sh | bash -s -- --all
 ```
 
 List available skills:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/kirollosatef/claude-skills/main/install.sh | bash -s -- --list
+curl -sL https://raw.githubusercontent.com/kirollosatef/skills/main/install.sh | bash -s -- --list
 ```
 
 Skills land in `~/.claude/skills/<name>/`. Restart Claude Code (or open a new session) to pick them up.
@@ -35,16 +37,16 @@ Skills land in `~/.claude/skills/<name>/`. Restart Claude Code (or open a new se
 ### Manual install
 
 ```bash
-git clone https://github.com/kirollosatef/claude-skills.git
+git clone https://github.com/kirollosatef/skills.git
 mkdir -p ~/.claude/skills
-cp -R claude-skills/skills/share-markdown ~/.claude/skills/
+cp -R skills/skills/share-markdown ~/.claude/skills/
 chmod +x ~/.claude/skills/share-markdown/scripts/*.sh
 ```
 
 Or symlink for live development:
 
 ```bash
-ln -s "$PWD/claude-skills/skills/share-markdown" ~/.claude/skills/share-markdown
+ln -s "$PWD/skills/skills/share-markdown" ~/.claude/skills/share-markdown
 ```
 
 ## Available skills

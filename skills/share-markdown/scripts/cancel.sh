@@ -14,8 +14,8 @@ gist_id="${1:-}"
 plist_path="${LAUNCH_AGENTS_DIR}/${LABEL_PREFIX}.${gist_id}.plist"
 
 if [[ -f "$plist_path" ]]; then
-  launchctl unload "$plist_path" 2>/dev/null || true
   rm -f "$plist_path"
+  launchctl bootout "gui/${UID}/${LABEL_PREFIX}.${gist_id}" 2>/dev/null || launchctl unload "$plist_path" 2>/dev/null || true
   echo "✓ scheduled delete cancelled for gist $gist_id"
 else
   echo "no scheduled delete found for gist $gist_id (may already have fired or never scheduled)"
