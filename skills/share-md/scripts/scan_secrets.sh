@@ -12,6 +12,16 @@ if [[ -z "$file" || ! -f "$file" ]]; then
   exit 1
 fi
 
+# refuse files larger than 1 MB — grep on huge or binary files can hang or
+# OOM the host. Markdown shares should never be that large; if a user really
+# wants to share a huge file they can split or use a different tool.
+SIZE_LIMIT_BYTES=$((1024 * 1024))
+size=$(stat -f %z "$file" 2>/dev/null || stat -c %s "$file" 2>/dev/null || echo 0)
+if [[ "$size" -gt "$SIZE_LIMIT_BYTES" ]]; then
+  echo "error: file too large for secret scan ($size bytes > ${SIZE_LIMIT_BYTES}). split it or use a different tool." >&2
+  exit 1
+fi
+
 matches=()
 
 scan() {

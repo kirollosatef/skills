@@ -17,19 +17,32 @@ fi
 
 now=$(date +%s)
 
+# emit each record as a single base64-encoded JSON object so filenames with
+# tabs/newlines/quotes round-trip cleanly. tonumber? guards against state-file
+# corruption — invalid epochs report INVALID instead of producing null math.
 jq -r --argjson now "$now" '
-  .[] | [
-    .gist_id,
-    .filename,
-    .ttl,
-    .delete_at,
-    (if .target_epoch == "never" then "never" else ((.target_epoch | tonumber) - $now | tostring) end),
-    .raw_url
-  ] | @tsv
-' "$STATE_FILE" | while IFS=$'\t' read -r gist_id filename ttl delete_at remaining raw_url; do
+  .[] | {
+    gist_id, filename, ttl, delete_at, raw_url,
+    remaining: (
+      if .target_epoch == "never" then "never"
+      elif (.target_epoch | tonumber? // null) == null then "INVALID"
+      else ((.target_epoch | tonumber) - $now | tostring) end
+    )
+  } | @base64
+' "$STATE_FILE" | while read -r b64; do
+  decoded=$(printf '%s' "$b64" | base64 --decode)
+  gist_id=$(printf '%s' "$decoded" | jq -r .gist_id)
+  filename=$(printf '%s' "$decoded" | jq -r .filename)
+  ttl=$(printf '%s' "$decoded" | jq -r .ttl)
+  delete_at=$(printf '%s' "$decoded" | jq -r .delete_at)
+  raw_url=$(printf '%s' "$decoded" | jq -r .raw_url)
+  remaining=$(printf '%s' "$decoded" | jq -r .remaining)
+
   if [[ "$remaining" == "never" ]]; then
     countdown="never"
-  elif [[ "$remaining" -lt 0 ]]; then
+  elif [[ "$remaining" == "INVALID" ]]; then
+    countdown="INVALID (state corrupted; cancel + reshare)"
+  elif [[ "$remaining" -lt 0 ]] 2>/dev/null; then
     countdown="EXPIRED (cleanup pending)"
   else
     h=$((remaining / 3600))

@@ -11,10 +11,14 @@ STATE_FILE="${STATE_DIR}/scheduled.json"
 LAUNCH_AGENTS_DIR="${HOME}/Library/LaunchAgents"
 LABEL_PREFIX="com.kiro.share-md"
 
-mkdir -p "$STATE_DIR" "$LAUNCH_AGENTS_DIR"
-[[ -f "$STATE_FILE" ]] || echo '[]' > "$STATE_FILE"
-
 err() { echo "error: $*" >&2; exit 1; }
+
+# shellcheck source=_with_lock.sh
+. "${SCRIPT_DIR}/_with_lock.sh"
+
+mkdir -p "$STATE_DIR" || err "cannot create state dir $STATE_DIR — check permissions"
+mkdir -p "$LAUNCH_AGENTS_DIR" || err "cannot create $LAUNCH_AGENTS_DIR — check permissions"
+[[ -f "$STATE_FILE" ]] || echo '[]' > "$STATE_FILE"
 
 file="${1:-}"
 ttl="${2:-}"
@@ -31,9 +35,6 @@ esac
 command -v gh >/dev/null 2>&1 || err "gh CLI not installed. brew install gh"
 gh auth status >/dev/null 2>&1 || err "gh not authenticated. run: gh auth login"
 command -v jq >/dev/null 2>&1 || err "jq not installed. brew install jq"
-
-GH_BIN=$(command -v gh)
-JQ_BIN=$(command -v jq)
 
 # parse ttl -> epoch (or "never")
 target_epoch=$(bash "${SCRIPT_DIR}/parse_ttl.sh" "$ttl")
@@ -69,10 +70,14 @@ gist_url=$(gh gist create "$file" --desc "share-md: $filename")
 gist_id=$(basename "$gist_url")
 [[ -n "$gist_id" ]] || err "failed to create gist"
 
-# get raw url
-raw_url=$(gh api "gists/${gist_id}" --jq ".files.\"${filename}\".raw_url")
-# strip commit sha from raw url for stable form
-stable_raw="https://gist.githubusercontent.com/$(gh api user --jq .login)/${gist_id}/raw/${filename}"
+# URL-encode filename for the raw URL (handles spaces, unicode, parens, etc.)
+filename_enc=$(printf '%s' "$filename" | jq -sRr @uri)
+stable_raw="https://gist.githubusercontent.com/$(gh api user --jq .login)/${gist_id}/raw/${filename_enc}"
+
+# XML-escape helper for plist values
+xml_escape() {
+  printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&apos;/g"
+}
 
 # schedule deletion via launchd
 plist_path=""
@@ -81,7 +86,6 @@ if [[ "$target_epoch" != "never" ]]; then
   label="${LABEL_PREFIX}.${gist_id}"
   plist_path="${LAUNCH_AGENTS_DIR}/${label}.plist"
 
-  # date components for StartCalendarInterval (local time)
   year=$(date -r "$target_epoch" +%Y)
   month=$(date -r "$target_epoch" +%-m)
   day=$(date -r "$target_epoch" +%-d)
@@ -91,6 +95,12 @@ if [[ "$target_epoch" != "never" ]]; then
   delete_human="$(date -r "$target_epoch" "+%Y-%m-%d %H:%M %Z")"
 
   log_file="${STATE_DIR}/${gist_id}.log"
+
+  esc_script_dir=$(xml_escape "$SCRIPT_DIR")
+  esc_plist_path=$(xml_escape "$plist_path")
+  esc_log_file=$(xml_escape "$log_file")
+  esc_filename=$(xml_escape "$filename")
+  esc_home=$(xml_escape "$HOME")
 
   cat > "$plist_path" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -102,9 +112,9 @@ if [[ "$target_epoch" != "never" ]]; then
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>${SCRIPT_DIR}/_launchd_delete.sh</string>
+    <string>${esc_script_dir}/_launchd_delete.sh</string>
     <string>${gist_id}</string>
-    <string>${plist_path}</string>
+    <string>${esc_plist_path}</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict>
@@ -119,12 +129,14 @@ if [[ "$target_epoch" != "never" ]]; then
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>HOME</key>
-    <string>${HOME}</string>
+    <string>${esc_home}</string>
+    <key>SHARE_MD_FILENAME</key>
+    <string>${esc_filename}</string>
   </dict>
   <key>StandardOutPath</key>
-  <string>${log_file}</string>
+  <string>${esc_log_file}</string>
   <key>StandardErrorPath</key>
-  <string>${log_file}</string>
+  <string>${esc_log_file}</string>
 </dict>
 </plist>
 PLIST
@@ -135,20 +147,24 @@ else
   delete_human="never"
 fi
 
-# append to state file
-record=$(jq -n \
-  --arg gist_id "$gist_id" \
-  --arg gist_url "$gist_url" \
-  --arg raw_url "$stable_raw" \
-  --arg filename "$filename" \
-  --arg ttl "$ttl" \
-  --arg delete_at "$delete_human" \
-  --arg target_epoch "$target_epoch" \
-  --arg plist_path "$plist_path" \
-  --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{gist_id: $gist_id, gist_url: $gist_url, raw_url: $raw_url, filename: $filename, ttl: $ttl, delete_at: $delete_at, target_epoch: $target_epoch, plist_path: $plist_path, created_at: $created_at}')
+# append to state file under exclusive lock (mkdir-atomic)
+append_state() {
+  local record
+  record=$(jq -n \
+    --arg gist_id "$gist_id" \
+    --arg gist_url "$gist_url" \
+    --arg raw_url "$stable_raw" \
+    --arg filename "$filename" \
+    --arg ttl "$ttl" \
+    --arg delete_at "$delete_human" \
+    --arg target_epoch "$target_epoch" \
+    --arg plist_path "$plist_path" \
+    --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{gist_id: $gist_id, gist_url: $gist_url, raw_url: $raw_url, filename: $filename, ttl: $ttl, delete_at: $delete_at, target_epoch: $target_epoch, plist_path: $plist_path, created_at: $created_at}')
 
-jq --argjson rec "$record" '. + [$rec]' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+  jq --argjson rec "$record" '. + [$rec]' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+}
+with_lock append_state || err "failed to update state file"
 
 # output
 cat <<OUT
