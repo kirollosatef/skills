@@ -1,0 +1,15 @@
+# Eval workspaces (large, regenerated)
+*-workspace/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test artifacts
+/tmp-test/
