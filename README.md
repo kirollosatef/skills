@@ -53,7 +53,7 @@ ln -s "$PWD/skills/skills/share-md" ~/.claude/skills/share-md
 
 | Skill | What it does | Triggers on |
 |-------|--------------|-------------|
-| [`share-md`](skills/share-md/) | Share a `.md` file via secret GitHub Gist URL with optional auto-delete after a custom TTL (e.g. `1h`, `24h`, `7d`). Returns separate human-rendered + agent-raw URLs. | "share this markdown", "send doc as link", "give me a URL my agent can fetch", "share with auto-delete", "ephemeral share" |
+| [`share-md`](skills/share-md/) | Share a `.md` file via secret GitHub Gist URL with optional auto-delete (custom TTL via launchd), end-to-end encryption (`--encrypt`), preview mode (`--dry-run`), or one-time burn-after-read via transfer.sh (`--once`). Returns separate human-rendered + agent-raw URLs. | "share this markdown", "send doc as link", "give me a URL my agent can fetch", "share with auto-delete", "ephemeral share", "encrypt before sharing", "one-time view", "preview the share" |
 
 ## Adding your own skill
 

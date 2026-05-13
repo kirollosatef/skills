@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
 # share.sh - share a markdown file via secret gist with optional auto-delete
-# Usage: share.sh <file> <ttl>
-#   ttl: 30m, 1h, 24h, 7d, never
+# Usage: share.sh <file> <ttl> [flags]
+#   ttl:   30m, 1h, 24h, 7d, never
+#   flags:
+#     --encrypt           encrypt with random passphrase before pushing (gist
+#                         contents become ciphertext; recipient needs passphrase)
+#     --dry-run           print what would happen without creating anything
+#     --once              upload to transfer.sh with one-time-download (gist
+#                         backend cannot do true burn-after-read; this routes
+#                         to transfer.sh and ignores the launchd path)
+#
+# Backends:
+#   default              gist (auto-delete via launchd)
+#   --once               transfer.sh (Max-Downloads: 1, native one-time view)
 
 set -euo pipefail
 
@@ -20,10 +31,28 @@ mkdir -p "$STATE_DIR" || err "cannot create state dir $STATE_DIR — check permi
 mkdir -p "$LAUNCH_AGENTS_DIR" || err "cannot create $LAUNCH_AGENTS_DIR — check permissions"
 [[ -f "$STATE_FILE" ]] || echo '[]' > "$STATE_FILE"
 
-file="${1:-}"
-ttl="${2:-}"
+# parse positional args + flags
+file=""
+ttl=""
+encrypt_flag=0
+dry_run_flag=0
+once_flag=0
+positional=()
 
-[[ -n "$file" ]] || err "file path required (arg 1)"
+while (( $# )); do
+  case "$1" in
+    --encrypt) encrypt_flag=1; shift ;;
+    --dry-run) dry_run_flag=1; shift ;;
+    --once)    once_flag=1; shift ;;
+    --) shift; positional+=("$@"); break ;;
+    -*) err "unknown flag: $1" ;;
+    *)  positional+=("$1"); shift ;;
+  esac
+done
+file="${positional[0]:-}"
+ttl="${positional[1]:-}"
+
+[[ -n "$file" ]] || err "file path required (arg 1). usage: share.sh <file> <ttl> [--encrypt|--dry-run|--once]"
 [[ -n "$ttl" ]] || err "ttl required (arg 2). use 30m, 1h, 24h, 7d, or never"
 [[ -f "$file" ]] || err "file not found: $file"
 
@@ -31,6 +60,24 @@ case "$file" in
   *.md|*.markdown) ;;
   *) echo "warn: file is not .md/.markdown — gist will still render text" >&2 ;;
 esac
+
+# --once routes to transfer.sh; gist backend can't do native burn-after-read
+if [[ "$once_flag" -eq 1 ]]; then
+  if [[ "$dry_run_flag" -eq 1 ]]; then
+    echo "DRY RUN: would upload $file to transfer.sh with Max-Downloads: 1, ttl ~ $ttl"
+    exit 0
+  fi
+  # transfer.sh max ttl is 14 days; map shorthand to days
+  case "$ttl" in
+    *d) days="${ttl%d}" ;;
+    *h) hours="${ttl%h}"; days=$(( (hours + 23) / 24 )) ;;
+    *m) days=1 ;;
+    never) days=14 ;;  # transfer.sh hard cap
+    *) err "ttl format unsupported for --once. use Nh, Nd, or 'never'" ;;
+  esac
+  [[ "$days" -ge 1 && "$days" -le 14 ]] || days=14
+  exec bash "${SCRIPT_DIR}/_share_transfer_sh.sh" "$file" "$days" --once
+fi
 
 command -v gh >/dev/null 2>&1 || err "gh CLI not installed. brew install gh"
 gh auth status >/dev/null 2>&1 || err "gh not authenticated. run: gh auth login"
@@ -48,40 +95,84 @@ if [[ "$target_epoch" != "never" ]]; then
   fi
 fi
 
-# secret scan (advisory — caller decides to abort)
-if scan_output=$(bash "${SCRIPT_DIR}/scan_secrets.sh" "$file"); then
-  :
-else
-  rc=$?
-  if [[ "$rc" -eq 2 ]]; then
-    echo "WARNING: file contains potential secrets:" >&2
-    echo "$scan_output" >&2
-    echo "" >&2
-    echo "abort with Ctrl-C in next 5s, or wait to continue..." >&2
-    sleep 5
+# secret scan (advisory — caller decides to abort). skip for --encrypt since
+# the file gets encrypted before push and the ciphertext is opaque.
+if [[ "$encrypt_flag" -eq 0 ]]; then
+  if scan_output=$(bash "${SCRIPT_DIR}/scan_secrets.sh" "$file"); then
+    :
   else
-    err "secret scan failed (exit $rc)"
+    rc=$?
+    if [[ "$rc" -eq 2 ]]; then
+      echo "WARNING: file contains potential secrets:" >&2
+      echo "$scan_output" >&2
+      echo "" >&2
+      echo "abort with Ctrl-C in next 5s, or wait to continue (or rerun with --encrypt)..." >&2
+      sleep 5
+    else
+      err "secret scan failed (exit $rc)"
+    fi
   fi
 fi
 
+# compute the human-friendly delete time up front so dry-run can show it
+if [[ "$target_epoch" != "never" ]]; then
+  delete_human="$(date -r "$target_epoch" "+%Y-%m-%d %H:%M %Z")"
+else
+  delete_human="never"
+fi
+
+# --dry-run path: print what would happen, don't create or schedule anything
+if [[ "$dry_run_flag" -eq 1 ]]; then
+  filename=$(basename "$file")
+  filename_enc=$(printf '%s' "$filename" | jq -sRr @uri)
+  cat <<DRYOUT
+DRY RUN — nothing was created or scheduled.
+
+Would create secret gist:
+  Filename:   $filename
+  TTL:        $ttl
+  Delete at:  $delete_human
+  Encrypt:    $([[ "$encrypt_flag" -eq 1 ]] && echo "yes (passphrase generated)" || echo "no")
+
+Would publish:
+  Human URL:  https://gist.github.com/<user>/<gist-id>
+  Agent URL:  https://gist.githubusercontent.com/<user>/<gist-id>/raw/${filename_enc}
+
+Run without --dry-run to actually create the gist.
+DRYOUT
+  exit 0
+fi
+
+# encrypt step (if requested) — produce ciphertext file alongside
+upload_file="$file"
+passphrase=""
+if [[ "$encrypt_flag" -eq 1 ]]; then
+  command -v openssl >/dev/null 2>&1 || err "openssl required for --encrypt"
+  enc_dir=$(mktemp -d "${STATE_DIR}/.encrypt.XXXXXX")
+  enc_path="${enc_dir}/$(basename "$file").enc"
+  passphrase=$(bash "${SCRIPT_DIR}/_encrypt.sh" "$file" "$enc_path") || err "encryption failed"
+  upload_file="$enc_path"
+fi
+
 # create secret gist
-filename=$(basename "$file")
-gist_url=$(gh gist create "$file" --desc "share-md: $filename")
+filename=$(basename "$upload_file")
+gist_url=$(gh gist create "$upload_file" --desc "share-md: $(basename "$file")$([[ "$encrypt_flag" -eq 1 ]] && echo " (encrypted)")")
 gist_id=$(basename "$gist_url")
 [[ -n "$gist_id" ]] || err "failed to create gist"
+
+# clean up tmp ciphertext now that it's uploaded
+[[ "$encrypt_flag" -eq 1 ]] && rm -rf "$enc_dir"
 
 # URL-encode filename for the raw URL (handles spaces, unicode, parens, etc.)
 filename_enc=$(printf '%s' "$filename" | jq -sRr @uri)
 stable_raw="https://gist.githubusercontent.com/$(gh api user --jq .login)/${gist_id}/raw/${filename_enc}"
 
-# XML-escape helper for plist values
 xml_escape() {
   printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&apos;/g"
 }
 
 # schedule deletion via launchd
 plist_path=""
-delete_human=""
 if [[ "$target_epoch" != "never" ]]; then
   label="${LABEL_PREFIX}.${gist_id}"
   plist_path="${LAUNCH_AGENTS_DIR}/${label}.plist"
@@ -91,8 +182,6 @@ if [[ "$target_epoch" != "never" ]]; then
   day=$(date -r "$target_epoch" +%-d)
   hour=$(date -r "$target_epoch" +%-H)
   minute=$(date -r "$target_epoch" +%-M)
-
-  delete_human="$(date -r "$target_epoch" "+%Y-%m-%d %H:%M %Z")"
 
   log_file="${STATE_DIR}/${gist_id}.log"
 
@@ -143,8 +232,6 @@ PLIST
 
   launchctl unload "$plist_path" 2>/dev/null || true
   launchctl load "$plist_path"
-else
-  delete_human="never"
 fi
 
 # append to state file under exclusive lock (mkdir-atomic)
@@ -160,7 +247,8 @@ append_state() {
     --arg target_epoch "$target_epoch" \
     --arg plist_path "$plist_path" \
     --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{gist_id: $gist_id, gist_url: $gist_url, raw_url: $raw_url, filename: $filename, ttl: $ttl, delete_at: $delete_at, target_epoch: $target_epoch, plist_path: $plist_path, created_at: $created_at}')
+    --arg encrypted "$encrypt_flag" \
+    '{gist_id: $gist_id, gist_url: $gist_url, raw_url: $raw_url, filename: $filename, ttl: $ttl, delete_at: $delete_at, target_epoch: $target_epoch, plist_path: $plist_path, created_at: $created_at, encrypted: ($encrypted == "1")}')
 
   jq --argjson rec "$record" '. + [$rec]' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
 }
@@ -178,6 +266,22 @@ Agent URL (raw markdown):
 
 Auto-delete: $delete_human
 Gist ID: $gist_id
+OUT
+
+if [[ "$encrypt_flag" -eq 1 ]]; then
+  cat <<ENCOUT
+
+🔐 Encrypted with AES-256-CBC + PBKDF2.
+
+Passphrase (share OUT-OF-BAND, never alongside the URL):
+  $passphrase
+
+Recipient decrypts with:
+  curl -sL "$stable_raw" | openssl enc -d -aes-256-cbc -pbkdf2 -a -pass pass:'$passphrase'
+ENCOUT
+fi
+
+cat <<TAIL
 
 Cancel scheduled delete:
   bash ${SCRIPT_DIR}/cancel.sh $gist_id
@@ -187,4 +291,4 @@ Delete now:
 
 List all pending:
   bash ${SCRIPT_DIR}/list.sh
-OUT
+TAIL
