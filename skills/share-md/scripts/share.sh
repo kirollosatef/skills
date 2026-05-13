@@ -6,10 +6,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STATE_DIR="${HOME}/.claude/share-markdown"
+STATE_DIR="${HOME}/.claude/share-md"
 STATE_FILE="${STATE_DIR}/scheduled.json"
 LAUNCH_AGENTS_DIR="${HOME}/Library/LaunchAgents"
-LABEL_PREFIX="com.kiro.share-markdown"
+LABEL_PREFIX="com.kiro.share-md"
 
 mkdir -p "$STATE_DIR" "$LAUNCH_AGENTS_DIR"
 [[ -f "$STATE_FILE" ]] || echo '[]' > "$STATE_FILE"
@@ -65,7 +65,7 @@ fi
 
 # create secret gist
 filename=$(basename "$file")
-gist_url=$(gh gist create "$file" --desc "share-markdown: $filename")
+gist_url=$(gh gist create "$file" --desc "share-md: $filename")
 gist_id=$(basename "$gist_url")
 [[ -n "$gist_id" ]] || err "failed to create gist"
 

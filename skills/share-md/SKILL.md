@@ -1,5 +1,5 @@
 ---
-name: share-markdown
+name: share-md
 description: Share a markdown file via a private GitHub Gist link with optional auto-delete after a custom TTL. Use this skill whenever the user wants to send/share/give a markdown file or doc to a colleague, teammate, agent, or themselves via a URL — even if they don't say "gist" explicitly. Triggers on phrases like "share this markdown", "send this doc as a link", "give me a shareable URL for this .md", "share with auto-delete", "ephemeral share", "expire in N hours/days", "share so my agent can fetch it", or any request to turn a local markdown file into a fetchable URL with optional expiry.
 ---
 
@@ -37,7 +37,7 @@ The script outputs:
 - **Delete time** — wall-clock UTC + local time when gist will be removed (or `never`)
 - **Cancel command** — how the user can cancel the scheduled delete
 
-The script also appends a record to `~/.claude/share-markdown/scheduled.json` so the user can list/cancel pending deletes later via `scripts/list.sh` and `scripts/cancel.sh`.
+The script also appends a record to `~/.claude/share-md/scheduled.json` so the user can list/cancel pending deletes later via `scripts/list.sh` and `scripts/cancel.sh`.
 
 ## TTL format
 
@@ -74,7 +74,7 @@ If the user asks "what gists am I sharing right now?" or "cancel that share", us
 
 ## Why launchd over `at`
 
-macOS `at` requires `atrun` to be loaded via `sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.atrun.plist` and isn't enabled by default on modern macOS. launchd works out of the box, persists across reboots, and is the platform-native scheduler. The script writes a one-shot `LaunchAgent` plist to `~/Library/LaunchAgents/com.kiro.share-markdown.<gist-id>.plist` with `StartCalendarInterval` set to the delete time, then loads it. After firing, the plist self-unloads and the script removes it.
+macOS `at` requires `atrun` to be loaded via `sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.atrun.plist` and isn't enabled by default on modern macOS. launchd works out of the box, persists across reboots, and is the platform-native scheduler. The script writes a one-shot `LaunchAgent` plist to `~/Library/LaunchAgents/com.kiro.share-md.<gist-id>.plist` with `StartCalendarInterval` set to the delete time, then loads it. After firing, the plist self-unloads and the script removes it.
 
 ## Edge cases
 

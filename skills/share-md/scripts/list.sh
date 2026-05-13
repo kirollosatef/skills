@@ -2,7 +2,7 @@
 # list.sh - show all currently shared gists with countdown
 set -euo pipefail
 
-STATE_FILE="${HOME}/.claude/share-markdown/scheduled.json"
+STATE_FILE="${HOME}/.claude/share-md/scheduled.json"
 
 if [[ ! -f "$STATE_FILE" ]]; then
   echo "no shares yet"

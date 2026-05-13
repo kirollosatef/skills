@@ -11,13 +11,13 @@ Repo: [github.com/kirollosatef/skills](https://github.com/kirollosatef/skills)
 Install a single skill:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/kirollosatef/skills/main/install.sh | bash -s -- share-markdown
+curl -sL https://raw.githubusercontent.com/kirollosatef/skills/main/install.sh | bash -s -- share-md
 ```
 
 Install multiple at once:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/kirollosatef/skills/main/install.sh | bash -s -- share-markdown other-skill
+curl -sL https://raw.githubusercontent.com/kirollosatef/skills/main/install.sh | bash -s -- share-md other-skill
 ```
 
 Install everything:
@@ -39,21 +39,21 @@ Skills land in `~/.claude/skills/<name>/`. Restart Claude Code (or open a new se
 ```bash
 git clone https://github.com/kirollosatef/skills.git
 mkdir -p ~/.claude/skills
-cp -R skills/skills/share-markdown ~/.claude/skills/
-chmod +x ~/.claude/skills/share-markdown/scripts/*.sh
+cp -R skills/skills/share-md ~/.claude/skills/
+chmod +x ~/.claude/skills/share-md/scripts/*.sh
 ```
 
 Or symlink for live development:
 
 ```bash
-ln -s "$PWD/skills/skills/share-markdown" ~/.claude/skills/share-markdown
+ln -s "$PWD/skills/skills/share-md" ~/.claude/skills/share-md
 ```
 
 ## Available skills
 
 | Skill | What it does | Triggers on |
 |-------|--------------|-------------|
-| [`share-markdown`](skills/share-markdown/) | Share a `.md` file via secret GitHub Gist URL with optional auto-delete after a custom TTL (e.g. `1h`, `24h`, `7d`). Returns separate human-rendered + agent-raw URLs. | "share this markdown", "send doc as link", "give me a URL my agent can fetch", "share with auto-delete", "ephemeral share" |
+| [`share-md`](skills/share-md/) | Share a `.md` file via secret GitHub Gist URL with optional auto-delete after a custom TTL (e.g. `1h`, `24h`, `7d`). Returns separate human-rendered + agent-raw URLs. | "share this markdown", "send doc as link", "give me a URL my agent can fetch", "share with auto-delete", "ephemeral share" |
 
 ## Adding your own skill
 
@@ -73,14 +73,14 @@ Re-running the install command overwrites the existing copy with the latest vers
 rm -rf ~/.claude/skills/<skill-name>
 ```
 
-For `share-markdown` specifically, also clean up any pending launchd jobs:
+For `share-md` specifically, also clean up any pending launchd jobs:
 
 ```bash
-launchctl list | grep com.kiro.share-markdown | awk '{print $3}' | while read label; do
+launchctl list | grep com.kiro.share-md | awk '{print $3}' | while read label; do
   launchctl unload ~/Library/LaunchAgents/${label}.plist 2>/dev/null
   rm -f ~/Library/LaunchAgents/${label}.plist
 done
-rm -rf ~/.claude/share-markdown
+rm -rf ~/.claude/share-md
 ```
 
 ## License

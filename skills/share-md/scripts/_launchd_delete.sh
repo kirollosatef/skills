@@ -10,7 +10,7 @@ set -uo pipefail
 gist_id="${1:-}"
 plist_path="${2:-}"
 
-STATE_FILE="${HOME}/.claude/share-markdown/scheduled.json"
+STATE_FILE="${HOME}/.claude/share-md/scheduled.json"
 
 # need PATH so we find gh/jq
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
